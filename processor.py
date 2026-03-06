@@ -17,6 +17,7 @@ SPACING_MM = 5.0
 BORDER_WIDTH_MM = 0.15
 DILATION_PIXELS = 7
 THRESHOLD_WHITE = 230
+BLUR_SIZE_MM = 25
 
 # ReportLab uses points (1 point = 1/72 inch). reportlab.lib.units.mm handles the conversion.
 PAGE_WIDTH, PAGE_HEIGHT = A4
@@ -35,7 +36,7 @@ def process_image(filepath: str) -> Image.Image | None:
     if img.shape[2] == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
 
-    # 1. Identify "White" (anything above 250 brightness)
+    # 1. Identify "White" (anything above THRESHOLD_WHITE brightness)
     gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
     _, white_mask = cv2.threshold(gray, THRESHOLD_WHITE, 255, cv2.THRESH_BINARY)
 
@@ -46,11 +47,14 @@ def process_image(filepath: str) -> Image.Image | None:
     kernel = np.ones((3, 3), np.uint8)
     dilated_mask = cv2.dilate(figure_mask, kernel, iterations=DILATION_PIXELS)
 
-    # 4. Apply mask to Alpha channel
-    img[:, :, 3] = dilated_mask
+    # 4. Blur the mask for nicer finish:
+    blurred_mask = cv2.GaussianBlur(dilated_mask, (BLUR_SIZE_MM, BLUR_SIZE_MM), 0)
 
-    # 5. Crop to content
-    coords = cv2.findNonZero(dilated_mask)
+    # 5. Apply mask to Alpha channel
+    img[:, :, 3] = blurred_mask
+
+    # 6. Crop to content
+    coords = cv2.findNonZero(blurred_mask)
     if coords is None:
         return None
     x, y, w, h = cv2.boundingRect(coords)
