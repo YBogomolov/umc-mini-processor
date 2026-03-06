@@ -24,10 +24,8 @@ PAGE_WIDTH, PAGE_HEIGHT = A4
 GREY_COLOUR = Color(0.7, 0.7, 0.7)
 
 
-def process_image(filepath: str) -> Image.Image | None:
-    """
-    Removes white background, applies a 7px border, and crops.
-    """
+def process_image(filepath: str, dilation_pixels=DILATION_PIXELS) -> Image.Image | None:
+    # Load image with alpha channel
     img = cv2.imread(filepath, cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
@@ -36,31 +34,68 @@ def process_image(filepath: str) -> Image.Image | None:
     if img.shape[2] == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
 
-    # 1. Identify "White" (anything above THRESHOLD_WHITE brightness)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-    _, white_mask = cv2.threshold(gray, THRESHOLD_WHITE, 255, cv2.THRESH_BINARY)
+    h, w = img.shape[:2]
+    # Flood mask must be 2 pixels larger than the image
+    flood_mask = np.zeros((h + 2, w + 2), np.uint8)
+    temp_img = img[:, :, :3].copy()
 
-    # 2. Define Figure (Not White)
-    figure_mask = cv2.bitwise_not(white_mask)
+    # --- MULTI-SEED BORDER PROBE ---
+    # We check every pixel on the border. If it's "white-ish", we click it.
+    # This eats all background pockets but cannot enter the character's
+    # silhouette to nuke the shield.
+    edge_threshold = 245
+    tolerance = (10, 10, 10)  # Handles slight compression noise in the white
 
-    # 3. Grow Figure by 7px (Dilation)
+    # Check top/bottom edges
+    for x in range(w):
+        for y in [0, h - 1]:
+            if np.all(temp_img[y, x] >= edge_threshold):
+                cv2.floodFill(
+                    temp_img,
+                    flood_mask,
+                    (x, y),
+                    (255, 255, 255),
+                    tolerance,
+                    tolerance,
+                )
+
+    # Check left/right edges
+    for y in range(h):
+        for x in [0, w - 1]:
+            if np.all(temp_img[y, x] >= edge_threshold):
+                cv2.floodFill(
+                    temp_img,
+                    flood_mask,
+                    (x, y),
+                    (255, 255, 255),
+                    tolerance,
+                    tolerance,
+                )
+
+    # --- THE MASK FIX ---
+    # background_mask is 1 where the background was filled, 0 elsewhere
+    background_mask = flood_mask[1:-1, 1:-1]
+
+    # Create a 0/255 mask: 255 for the Figure, 0 for the Background
+    # This fixes the "99.6% opaque" bug.
+    figure_mask = np.where(background_mask == 1, 0, 255).astype(np.uint8)
+
+    # Create the white halo
     kernel = np.ones((3, 3), np.uint8)
-    dilated_mask = cv2.dilate(figure_mask, kernel, iterations=DILATION_PIXELS)
-
-    # 4. Blur the mask for nicer finish:
+    dilated_mask = cv2.dilate(figure_mask, kernel, iterations=dilation_pixels)
     blurred_mask = cv2.GaussianBlur(dilated_mask, (BLUR_SIZE_MM, BLUR_SIZE_MM), 0)
 
-    # 5. Apply mask to Alpha channel
+    # Set the Alpha Channel
     img[:, :, 3] = blurred_mask
 
-    # 6. Crop to content
+    # Crop to content
     coords = cv2.findNonZero(blurred_mask)
     if coords is None:
         return None
-    x, y, w, h = cv2.boundingRect(coords)
-    cropped = img[y : y + h, x : x + w]
+    x, y, crop_w, crop_h = cv2.boundingRect(coords)
+    cropped = img[y : y + crop_h, x : x + crop_w]
 
-    # Convert to PIL RGBA for ReportLab transparency support
+    # Convert to PIL RGBA (ReportLab requires this specific order)
     return Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGRA2RGBA))
 
 
