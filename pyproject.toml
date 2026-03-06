@@ -7,5 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "opencv-python>=4.13.0.92",
     "pillow>=12.1.1",
+    "pyinstaller>=6.19.0",
     "reportlab>=4.4.10",
+    "tkinterdnd2>=0.4.3",
 ]

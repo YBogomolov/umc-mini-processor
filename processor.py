@@ -64,10 +64,7 @@ def process_image(filepath: str) -> Image.Image | None:
     return Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGRA2RGBA))
 
 
-def generate_pdf(input_dir: str) -> None:
-    output_pdf = (
-        input_dir + "/" + os.path.splitext(os.path.basename(input_dir))[0] + ".pdf"
-    )
+def generate_pdf(input_dir: str, output_pdf: str) -> None:
     minis = []
     max_pixel_height = 0
 
@@ -175,4 +172,10 @@ if __name__ == "__main__":
         print(f"Error: '{input_folder}' is not a valid directory")
         sys.exit(1)
 
-    generate_pdf(input_folder)
+    output_pdf = (
+        input_folder
+        + "/"
+        + os.path.splitext(os.path.basename(input_folder))[0]
+        + ".pdf"
+    )
+    generate_pdf(input_folder, output_pdf)
